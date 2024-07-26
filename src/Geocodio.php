@@ -26,8 +26,9 @@ class Geocodio
      * @see https://www.geocod.io/docs/#changelog
      */
     private $apiVersion = 'v1.7';
-    
+
     private Client $client;
+    private ResponseInterface $lastResponse;
 
     const ADDRESS_COMPONENT_PARAMETERS = [
         'street',
@@ -38,23 +39,27 @@ class Geocodio
     ];
 
 
-    public function __construct(Client $client = null) {
+    public function __construct(Client $client = null)
+    {
         $this->client = $client ?? new Client();
     }
 
-    public function setApiKey(string $apiKey): self {
+    public function setApiKey(string $apiKey): self
+    {
         $this->apiKey = $apiKey;
 
         return $this;
     }
 
-    public function setHostname(string $hostname): self {
+    public function setHostname(string $hostname): self
+    {
         $this->hostname = $hostname;
 
         return $this;
     }
 
-    public function setApiVersion(string $apiVersion): self {
+    public function setApiVersion(string $apiVersion): self
+    {
         $this->apiVersion = $apiVersion;
 
         return $this;
@@ -67,7 +72,8 @@ class Geocodio
      * @param int|null $limit
      * @return array|object
      */
-    public function geocode($query, array $fields = [], int $limit = null) {
+    public function geocode($query, array $fields = [], int $limit = null)
+    {
         return $this->handleRequest('geocode', $query, $fields, $limit);
     }
 
@@ -78,11 +84,13 @@ class Geocodio
      * @param int|null $limit
      * @return array|object
      */
-    public function reverse($query, array $fields = [], int $limit = null) {
+    public function reverse($query, array $fields = [], int $limit = null)
+    {
         return $this->handleRequest('reverse', $query, $fields, $limit);
     }
 
-    private function handleRequest(string $endpoint, $query, array $fields = [], int $limit = null) {
+    private function handleRequest(string $endpoint, $query, array $fields = [], int $limit = null)
+    {
         $url = $this->formatUrl($endpoint);
 
         $queryParameters = array_filter([
@@ -107,14 +115,26 @@ class Geocodio
             $this->handleException($e);
         }
 
+        $this->lastResponse = $response; // Store the last response
+
         return $this->formatResponse($response);
     }
 
-    private function formatUrl(string $endpoint) {
+    public function getRemainingQueries(): ?int
+    {
+        if (isset($this->lastResponse)) {
+            return (int) $this->lastResponse->getHeaderLine('X-RateLimit-Remaining');
+        }
+        return null;
+    }
+
+    private function formatUrl(string $endpoint)
+    {
         return sprintf('https://%s/%s/%s', $this->hostname, $this->apiVersion, $endpoint);
     }
 
-    private function preprocessQuery($query, string $endpoint) {
+    private function preprocessQuery($query, string $endpoint)
+    {
         // Convert lat/lon array to a comma-separated string
         if ($endpoint === 'reverse' && is_array($query) && count($query) === 2) {
             list($latitude, $longitude) = $query;
@@ -127,7 +147,8 @@ class Geocodio
         return $query;
     }
 
-    private function isSingleQuery($query): bool {
+    private function isSingleQuery($query): bool
+    {
         if (is_array($query)) {
             $addressComponentKeys = array_intersect(array_keys($query), self::ADDRESS_COMPONENT_PARAMETERS);
 
@@ -137,7 +158,8 @@ class Geocodio
         return true;
     }
 
-    private function performSingleRequest(string $url, $query, array $queryParameters) {
+    private function performSingleRequest(string $url, $query, array $queryParameters)
+    {
         if (is_array($query)) {
             $queryParameters += $query;
         } else {
@@ -150,7 +172,8 @@ class Geocodio
         ]);
     }
 
-    private function performBatchRequest(string $url, array $queries, array $queryParameters) {
+    private function performBatchRequest(string $url, array $queries, array $queryParameters)
+    {
         return $this->client->post($url, [
             'query' => $queryParameters,
             'json' => $queries,
@@ -158,7 +181,8 @@ class Geocodio
         ]);
     }
 
-    private function handleException(Exception $e) {
+    private function handleException(Exception $e)
+    {
         $response = $e instanceof RequestException && $e->hasResponse() ? $e->getResponse() : null;
 
         $errorMessage = 'Error';
@@ -177,11 +201,13 @@ class Geocodio
         throw new GeocodioException($errorMessage, $errorCode, $e);
     }
 
-    private function formatResponse(ResponseInterface $response) {
+    private function formatResponse(ResponseInterface $response)
+    {
         return json_decode((string)$response->getBody());
     }
 
-    private function getHeaders(): array {
+    private function getHeaders(): array
+    {
         return [
             'User-Agent' => 'geocodio-library-php/1.2.0'
         ];
